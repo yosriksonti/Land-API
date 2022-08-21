@@ -1,0 +1,41 @@
+{
+  "name": "Experiences_test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "doc": "jsdoc -c jsdoc.json",
+    "test": "mocha",
+    "start": "nodemon ./functions"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/storage": "^5.3.0",
+    "axios": "^0.27.2",
+    "chai": "^4.2.0",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "cuid": "^2.1.8",
+    "dotenv": "^8.2.0",
+    "express": "^4.17.1",
+    "firebase": "^7.17.1",
+    "firebase-admin": "^9.0.0",
+    "firebase-functions": "^3.6.1",
+    "jest": "^26.3.0",
+    "jsonwebtoken": "^8.5.1",
+    "keyword-filter": "^1.0.0",
+    "lodash": "^4.17.20",
+    "node-base64-image": "^2.0.1",
+    "nodemailer": "^6.5.0",
+    "swagger-jsdoc": "^4.0.0",
+    "swagger-ui-express": "^4.1.4",
+    "web-push": "^3.4.4"
+  },
+  "devDependencies": {
+    "firebase-functions-test": "^0.2.0",
+    "jsdoc": "^3.6.5",
+    "mocha": "^8.2.0"
+  }
+}

@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: announces/data-access/announces-db.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: announces/data-access/announces-db.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * Makes a Announces Data Access
+ * @param {function} makeDb -DataBase Connection Maker
+ * @param {function} makeAuth -Admin Connection Maker
+ * @param {function} firebase -Firebase Connection
+ * @param {function} jwt -JSON Web Token Module
+ * @param {function} crypto -Crypting Module
+ * @exports makeAnnouncesDb 
+ * @returns {Object}  - Announces Data Access Frozen Object
+ */
+export default function makeAnnouncesDb ({ makeDb, makeAuth, firebase, jwt, crypto, keywordFilter}) {
+  return Object.freeze({
+    findAll,
+    findById,
+    findByEmail,
+    filters,
+    exists,
+    insert,
+    login,
+    update,
+    updateVisibility,
+    updatePassword,
+    reset
+  })
+  async function findAll () {
+    const db = makeDb()
+    const data = [];
+    const result = await db.collection('announces').get().then(function(querySnapshot) {
+        querySnapshot.forEach(function(doc) {
+            console.log(doc.id, " => ", doc.data());
+            data.push({
+                id: doc.id,
+                body: doc.data()
+            });
+        });
+    })
+    .catch(function(error) {
+      throw (new Error(error))
+    });
+    return data;
+  }
+
+  async function filters ({
+    keywords = "", 
+    date_cr = 0
+  }) {
+    const db = makeDb()
+    var data = []
+    var count = 1
+    var empty = 0
+    var tmp = 1
+    var kwd = true;
+    var co = Number(date_cr)+1
+    if(date_cr != 0){
+      co ++
+    }
+    while (count &lt; 13 ){
+      await db.collection('announces')
+    .orderBy("date_cr")
+    .startAt(co)
+    .limit(25-count*2)
+    .get()
+    .then(function(snapshot) {
+        empty = 1
+        snapshot.forEach(element => {
+          tmp ++
+          empty = 0
+          kwd = true
+          console.log("ELEMENT//////////////",tmp)
+          if(count &lt; 13) {
+            const reply = element.data()
+            console.log("Titre",reply.titre)
+            console.log(keywords)
+            if(keywords != "" ){
+              const keys = keywords.split(" ")
+              const filter = new keywordFilter()
+              filter.init(keys)
+              kwd = filter.hasKeyword(reply.titre)
+            }
+            if (kwd){
+              data.push({
+                id: element.id,
+                body: reply
+              })
+              count++
+            }
+          }
+          co = Number(element.data().date_cr)+1
+        })
+        if(empty == 1){
+          count = 13
+        }
+      }).catch(function(error) {
+        throw (new Error(error))
+      });
+      console.log("CYCLE//////")
+      console.log("EMPTY////",empty)
+    }
+    return data
+
+  }
+  
+  async function findById ({ Id: _id }) {
+    const db = makeDb()
+    const data = [];
+    const docID=String(_id);
+    console.log(_id);
+    const result = await db.collection('announces').doc(docID).get().then(function(doc) {
+      if (doc.exists) {
+        console.log(doc.id, " => ", doc.data());
+        data.push({
+        id: doc.id,
+        body: doc.data()
+        });
+      } else {
+          throw (new Error("Announce does NOT exist."))
+      }
+      
+    })
+    .catch(function(error) {
+      throw (new Error(error))
+    });
+    return data;
+  }
+
+  async function findByEmail (description) {
+    const db = makeDb()
+    var exists = false
+    console.log(description);
+    const result = await db.collection('announces').where("description", "==", description).get().then(function(querySnapshot) {
+      querySnapshot.forEach(function(doc) {
+          exists = {id: doc.id, body: doc.data()};
+      });
+    }).catch(function(error) {
+      throw (new Error(error))
+    });
+    if(!exists) {
+      throw new Error("Email is NOT used.")
+    }
+    return exists;
+  }
+
+  async function findLoginByEmail (description) {
+    const db = makeDb()
+    var exists = false
+    console.log(description);
+    const result = await db.collection('logins').where("description", "==", description).get().then(function(querySnapshot) {
+      querySnapshot.forEach(function(doc) {
+          // doc.data() is never undefined for query doc snapshots
+          exists = {id: doc.id, body: doc.data()};
+      });
+    })
+    .catch(function(error) {
+      throw (new Error(error))
+    });
+    if(!exists) {
+      throw new Error("Email is NOT used.")
+    }
+    return exists;
+  }
+  async function exists (description) {
+    const db = makeDb()
+    var exists = false
+    console.log(description);
+    const result = await db.collection('logins').where("description", "==", description).get().then(function(querySnapshot) {
+      querySnapshot.forEach(function(doc) {
+        throw new Error("Email already Used.")
+      });
+      
+    })
+    .catch(function(error) {
+      throw (new Error(error))
+    });
+    console.log(exists)
+    return exists;
+  }
+  async function insert ({ ...announceInfo}) {
+    const db = makeDb()
+    const auth = makeAuth()
+    console.log(announceInfo)
+    return getAnnounce(announceInfo).then((result) => {
+        return db.collection('announces').add({
+          titre: result.body.titre,
+          date_cr: result.body.date_cr,
+          date_update: result.body.date_update,
+          description: result.body.description,
+          image: result.body.image,
+          visib: result.body.visib,
+        }).then((respond) => { 
+          return respond
+        }).catch(function(error) {
+            throw (new Error(error))
+        });
+      }).catch(function(error) {
+          throw (new Error(error))
+      });
+  }
+
+  async function insert_alt ({ ...announceInfo}) {
+    const db = makeDb()
+    const auth = makeAuth()
+    console.log(announceInfo)
+    return getAnnounce(announceInfo).then((result) => {
+      return exists(result.body.description).then(() => {
+        return db.collection('announces').add({
+          titre: result.body.titre,
+          date_cr: result.body.date_cr,
+          date_update: result.body.date_update,
+          description: result.body.description,
+          image: result.body.image,
+          visib: result.body.visib
+        }).then((resp) => {
+          const password = crypt(announceInfo.password, "e", crypto) 
+          return db.collection('logins').add({
+            description: announceInfo.description,
+            password: password,
+            date_cr: announceInfo.date_cr,
+            date_update: announceInfo.date_update,
+            role: announceInfo.role,
+            uid: resp._path.segments[1]
+          }).catch(function(error) {
+              console.log(result.body.description)
+              throw (new Error(error))
+          });
+        }).catch(function(error) {
+            throw (new Error(error))
+        });
+      })
+    }).catch(function(error) {
+        throw (new Error(error))
+    })
+  }
+
+  
+  async function login ({...announceInfo}) {
+    return firebase.auth().signInWithEmailAndPassword(announceInfo.description, announceInfo.password).then(function(resp){
+      return findByEmail(announceInfo.description).then((result) => {
+        if(result.body.visib){   
+          return firebase.auth().currentAnnounce.getIdToken(true).then((token) => {
+            return {
+              id: result.id, 
+              body: result.body, 
+              token: token
+            }
+          })   
+          
+        }else {
+          throw (new Error("This Announce is NOT visib."))
+        }
+       }).catch(function(error) {
+          throw (new Error(error))
+       })
+    }).catch(function(error) {
+        throw (new Error(error))
+    });
+  }
+
+  async function login_alt ({...announceInfo}) {
+      return findLoginByEmail(announceInfo.description).then((resp) => {
+        if(announceInfo.password === crypt(resp.body.password, "d", crypto)){
+          return findByEmail(announceInfo.description).then((result) => {
+            if(result.body.visib){
+              const token = getAnnounceToken({id: resp.id, uid: result.id, description: resp.body.description, role: resp.body.role}, jwt)
+              return {
+                id: result.id,
+                body: result.body, 
+                token: token
+              }
+            } else {
+              throw (new Error("This Announce is NOT visib."))
+            }
+          }).catch((error) => {
+            throw new Error("Announce does NOT exist.")
+          }) 
+        } else {
+          throw new Error("Check your Credentials.")
+        }           
+      }).catch((error) => {
+        throw new Error(error)
+      })
+    //catch ( auth )  
+  }
+
+  async function reset ({...announceInfo}) {  
+    const auth = firebase.auth()
+    return getAnnounce(announceInfo).then((result) => {
+      return auth.sendPasswordResetEmail(result.body.description).then(() => {
+        return "Email Sent."
+      }).catch(function(error) {
+        throw new Error(error)
+      })
+    }).catch((error) => {
+      throw new Error(error)
+    })    
+  }
+
+  async function updatePassword ({...announceInfo}) {  
+    const auth = makeAuth()
+    return getAnnounce(announceInfo).then((result) => {
+      return firebase.auth().signInWithEmailAndPassword(result.body.description, result.body.password).then(function(){
+        return auth.verifyIdToken(result.token).then((resp) => {
+          if (resp.id === result.id){
+            return auth.updateAnnounce(resp.uid, {
+              password: result.body.newPassword
+            }).then(function(announceRecord) {
+              return announceRecord.toJSON()
+            }).catch(function(error) {
+              throw new Error(error)
+            });
+          } else {
+            throw new Error("Token does NOT match the Id.")
+          }
+        }).catch((error) => {
+          throw new Error(error)
+        })
+      }).catch((error) => {
+        throw new Error(error)
+      })
+    }).catch((error) => {
+      throw new Error(error)
+    })    
+  }
+  async function updatePassword_alt ({...announceInfo}) {  
+    const db = makeDb()
+    return getAnnounce(announceInfo).then((result) => {
+      if( validateToken(result.token, jwt).uid == result.id ) {
+        const password = crypt(result.body.newPassword, "e", crypto) 
+        return db.collection('logins').where("uid","==",result.id).set({
+          password: password
+        },
+        { 
+          merge : true 
+        }).catch((error) => {
+          throw (new Error(error))
+        })
+      }else{
+        throw (new Error("Token does NOT match the ID."))
+      }
+    }).catch((error) => {
+      throw new Error(error)
+    })    
+  }
+  async function update ({ ...announceInfo}) {
+    const db = makeDb()
+    const auth = makeAuth()
+    console.log(announceInfo)
+    return getAnnounce(announceInfo).then((result) => {
+      const docID=String(result.id)
+      console.log(docID)
+      return auth.verifyIdToken(result.token).then((resp) => {
+        if(resp.role == "moderator") {
+          return db.collection('announces').doc(docID).set({
+            titre: result.body.titre,
+            description: result.body.description,
+            image: result.body.image,
+            date_update :result.body.date_update
+          }).catch((error) => {
+              throw (new Error(error))
+          })
+        } else {
+            throw (new Error("Unauthorized Action."))
+        }
+      }).catch(function(error) {
+          throw (new Error(error))
+      })
+    })
+  }
+  async function updateVisibility ({ ...announceInfo}) {
+    const db = makeDb()
+    const auth = makeAuth()
+    console.log(announceInfo)
+    return getAnnounce(announceInfo).then((result) => {
+      const docID=String(result.id)
+      console.log(docID)
+      return auth.verifyIdToken(result.token).then((resp) => {
+        if(resp.role == "moderator") {
+          return db.collection('announces').doc(docID).update({
+            visib: result.body.visib,
+            date_update :result.body.date_update
+          }).catch((error) => {
+              throw (new Error(error))
+          })
+        } else {
+            throw (new Error("Unauthorized Action."))
+        }
+      }).catch(function(error) {
+          throw (new Error(error))
+      })
+    })
+  }
+  async function update_alt ({ ...announceInfo}) {
+    const db = makeDb()
+    const auth = makeAuth()
+    console.log(announceInfo)
+    return getAnnounce(announceInfo).then((result) => {
+      const docID=String(result.id)
+      console.log(docID)
+      if( validateToken(result.token, jwt).uid == result.id ) {
+        return db.collection('announces').doc(docID).update({
+          titre: result.body.titre,
+          surtitre: result.body.surtitre,
+          image: result.body.image,
+          date_update :result.body.date_update
+        }).catch((error) => {
+          throw new Error(error)
+        })
+      } else {
+          throw (new Error("Token does NOT match ID."))
+      }
+    })
+  }
+}
+function getAnnounce(announce) {
+  return new Promise((resolve, reject) => {
+      setTimeout(() => {
+          resolve({ 
+          id: announce.id,
+          body: {
+            titre: announce.titre,
+            date_cr: announce.date_cr,
+            date_update: announce.date_update,
+            description: announce.description,
+            image: announce.image,
+            visib: announce.visib
+           },
+          token: announce.token,
+          });
+          reject(new Error('Errr')); 
+      }, 10);
+  });
+}
+function getAnnounceToken(info, jwt){
+  /**************** ENV secret key **************
+//const secretKey = process.env.DM_KEY
+*/
+
+/**************** Static api root ***********/
+//const secretKey = "iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAYAAABWKLW/AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAaGVYSWZNTQAqAAAACAAEAQYAAwAAAAEAAgAAARIAAwAAAAEAAQAAASgAAwAAAAEAAgAAh2kABAAAAAEAAAA+AAAAAAADoAEAAwAAAAEAAQAAoAIABAAAAAEAAAADoAMABAAAAAEAAAADAAAAANUh22IAAALgaVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA1LjQuMCI+CiAgIDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+CiAgICAgIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiCiAgICAgICAgICAgIHhtbG5zOnRpZmY9Imh0dHA6Ly9ucy5hZG9iZS5jb20vdGlmZi8xLjAvIgogICAgICAgICAgICB4bWxuczpleGlmPSJodHRwOi8vbnMuYWRvYmUuY29tL2V4aWYvMS4wLyI+CiAgICAgICAgIDx0aWZmOlBob3RvbWV0cmljSW50ZXJwcmV0YXRpb24+MjwvdGlmZjpQaG90b21ldHJpY0ludGVycHJldGF0aW9uPgogICAgICAgICA8dGlmZjpPcmllbnRhdGlvbj4xPC90aWZmOk9yaWVudGF0aW9uPgogICAgICAgICA8dGlmZjpDb21wcmVzc2lvbj4xPC90aWZmOkNvbXByZXNzaW9uPgogICAgICAgICA8dGlmZjpSZXNvbHV0aW9uVW5pdD4yPC90aWZmOlJlc29sdXRpb25Vbml0PgogICAgICAgICA8ZXhpZjpQaXhlbFlEaW1lbnNpb24+MzwvZXhpZjpQaXhlbFlEaW1lbnNpb24+CiAgICAgICAgIDxleGlmOkNvbG9yU3BhY2U+MTwvZXhpZjpDb2xvclNwYWNlPgogICAgICAgICA8ZXhpZjpQaXhlbFhEaW1lbnNpb24+MzwvZXhpZjpQaXhlbFhEaW1lbnNpb24+CiAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPgogICA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgqQdKizAAAAK0lEQVQIHWNkY2b6z83NzcDExMTAxMbGxiAgIMDw/sNHBkZOVpb/IFGQIABmhgVx+33aWAAAAABJRU5ErkJggg=="
+const secretKey ='iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAYAAABWKLW/AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAaGVYSWZNTQAqAAAACAAEAQYAAwAAAAEAAgAAARIAAwAAAAEAAQAAASgAAwAAAAEAAgAAh2kABAAAAAEAAAA+AAAAAAADoAEAAwAAAAEAAQAAoAIABAAAAAEAAAADoAMABAAAAAEAAAADAAAAANUh22IAAALgaVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA1LjQuMCI+CiAgIDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+CiAgICAgIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiCiAgICAgICAgICAgIHhtbG5zOnRpZmY9Imh0dHA6Ly9ucy5hZG9iZS5jb20vdGlmZi8xLjAvIgogICAgICAgICAgICB4bWxuczpleGlmPSJodHRwOi8vbnMuYWRvYmUuY29tL2V4aWYvMS4wLyI+CiAgICAgICAgIDx0aWZmOlBob3RvbWV0cmljSW50ZXJwcmV0YXRpb24+MjwvdGlmZjpQaG90b21ldHJpY0ludGVycHJldGF0aW9uPgogICAgICAgICA8dGlmZjpPcmllbnRhdGlvbj4xPC90aWZmOk9yaWVudGF0aW9uPgogICAgICAgICA8dGlmZjpDb21wcmVzc2lvbj4xPC90aWZmOkNvbXByZXNzaW9uPgogICAgICAgICA8dGlmZjpSZXNvbHV0aW9uVW5pdD4yPC90aWZmOlJlc29sdXRpb25Vbml0PgogICAgICAgICA8ZXhpZjpQaXhlbFlEaW1lbnNpb24+MzwvZXhpZjpQaXhlbFlEaW1lbnNpb24+CiAgICAgICAgIDxleGlmOkNvbG9yU3BhY2U+MTwvZXhpZjpDb2xvclNwYWNlPgogICAgICAgICA8ZXhpZjpQaXhlbFhEaW1lbnNpb24+MzwvZXhpZjpQaXhlbFhEaW1lbnNpb24+CiAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPgogICA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgqQdKizAAAAK0lEQVQIHWNkY2b6z83NzcDExMTAxMbGxiAgIMDw/sNHBkZOVpb/IFGQIABmhgVx+33aWAAAAABJRU5ErkJggg=='
+const token = jwt.sign(
+  { uid: info.uid, id: info.id, description: info.description, role: info.role },secretKey,{ expiresIn: '24h' });
+  return token
+}
+
+function validateToken(token, jwt){
+  const secretKey ='iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAYAAABWKLW/AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAaGVYSWZNTQAqAAAACAAEAQYAAwAAAAEAAgAAARIAAwAAAAEAAQAAASgAAwAAAAEAAgAAh2kABAAAAAEAAAA+AAAAAAADoAEAAwAAAAEAAQAAoAIABAAAAAEAAAADoAMABAAAAAEAAAADAAAAANUh22IAAALgaVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA1LjQuMCI+CiAgIDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+CiAgICAgIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiCiAgICAgICAgICAgIHhtbG5zOnRpZmY9Imh0dHA6Ly9ucy5hZG9iZS5jb20vdGlmZi8xLjAvIgogICAgICAgICAgICB4bWxuczpleGlmPSJodHRwOi8vbnMuYWRvYmUuY29tL2V4aWYvMS4wLyI+CiAgICAgICAgIDx0aWZmOlBob3RvbWV0cmljSW50ZXJwcmV0YXRpb24+MjwvdGlmZjpQaG90b21ldHJpY0ludGVycHJldGF0aW9uPgogICAgICAgICA8dGlmZjpPcmllbnRhdGlvbj4xPC90aWZmOk9yaWVudGF0aW9uPgogICAgICAgICA8dGlmZjpDb21wcmVzc2lvbj4xPC90aWZmOkNvbXByZXNzaW9uPgogICAgICAgICA8dGlmZjpSZXNvbHV0aW9uVW5pdD4yPC90aWZmOlJlc29sdXRpb25Vbml0PgogICAgICAgICA8ZXhpZjpQaXhlbFlEaW1lbnNpb24+MzwvZXhpZjpQaXhlbFlEaW1lbnNpb24+CiAgICAgICAgIDxleGlmOkNvbG9yU3BhY2U+MTwvZXhpZjpDb2xvclNwYWNlPgogICAgICAgICA8ZXhpZjpQaXhlbFhEaW1lbnNpb24+MzwvZXhpZjpQaXhlbFhEaW1lbnNpb24+CiAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPgogICA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgqQdKizAAAAK0lEQVQIHWNkY2b6z83NzcDExMTAxMbGxiAgIMDw/sNHBkZOVpb/IFGQIABmhgVx+33aWAAAAABJRU5ErkJggg=='
+  const decoded = jwt.verify(token, secretKey);
+  return decoded
+}
+
+function crypt(string, action, crypto) {
+  const secretKey ='iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAYAAABWKLW/AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAaGVYSWZNTQAqAAAACAAEAQYAAwAAAAEAAgAAARIAAwAAAAEAAQAAASgAAwAAAAEAAgAAh2kABAAAAAEAAAA+AAAAAAADoAEAAwAAAAEAAQAAoAIABAAAAAEAAAADoAMABAAAAAEAAAADAAAAANUh22IAAALgaVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA1LjQuMCI+CiAgIDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+CiAgICAgIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiCiAgICAgICAgICAgIHhtbG5zOnRpZmY9Imh0dHA6Ly9ucy5hZG9iZS5jb20vdGlmZi8xLjAvIgogICAgICAgICAgICB4bWxuczpleGlmPSJodHRwOi8vbnMuYWRvYmUuY29tL2V4aWYvMS4wLyI+CiAgICAgICAgIDx0aWZmOlBob3RvbWV0cmljSW50ZXJwcmV0YXRpb24+MjwvdGlmZjpQaG90b21ldHJpY0ludGVycHJldGF0aW9uPgogICAgICAgICA8dGlmZjpPcmllbnRhdGlvbj4xPC90aWZmOk9yaWVudGF0aW9uPgogICAgICAgICA8dGlmZjpDb21wcmVzc2lvbj4xPC90aWZmOkNvbXByZXNzaW9uPgogICAgICAgICA8dGlmZjpSZXNvbHV0aW9uVW5pdD4yPC90aWZmOlJlc29sdXRpb25Vbml0PgogICAgICAgICA8ZXhpZjpQaXhlbFlEaW1lbnNpb24+MzwvZXhpZjpQaXhlbFlEaW1lbnNpb24+CiAgICAgICAgIDxleGlmOkNvbG9yU3BhY2U+MTwvZXhpZjpDb2xvclNwYWNlPgogICAgICAgICA8ZXhpZjpQaXhlbFhEaW1lbnNpb24+MzwvZXhpZjpQaXhlbFhEaW1lbnNpb24+CiAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPgogICA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgqQdKizAAAAK0lEQVQIHWNkY2b6z83NzcDExMTAxMbGxiAgIMDw/sNHBkZOVpb/IFGQIABmhgVx+33aWAAAAABJRU5ErkJggg=='
+  if (action === "e") {
+    var mykey = crypto.createCipher('aes-128-cbc', secretKey);
+    var mystr = mykey.update(string, 'utf8', 'hex')
+    mystr += mykey.final('hex');
+    return mystr
+  } else if( action === "d" ) {
+    var mykey = crypto.createDecipher('aes-128-cbc', secretKey);
+    var mystr = mykey.update(string, 'hex', 'utf8')
+    mystr += mykey.final('utf8');
+    return mystr
+  }
+  else {
+    throw new Error('Invalid Action.')
+  }
+  
+}
+
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-announceController.html">announceController</a></li><li><a href="module-announceDataAccess.html">announceDataAccess</a></li><li><a href="module-announceService.html">announceService</a></li><li><a href="module-announceUseCase.html">announceUseCase</a></li><li><a href="module-buildMakeAnnounce.html">buildMakeAnnounce</a></li><li><a href="module-buildMakeUser.html">buildMakeUser</a></li><li><a href="module-buildMakeWishlist.html">buildMakeWishlist</a></li><li><a href="module-databaseService.html">databaseService</a></li><li><a href="module-makeAddAnnounce.html">makeAddAnnounce</a></li><li><a href="module-makeAddReset.html">makeAddReset</a></li><li><a href="module-makeAddUser.html">makeAddUser</a></li><li><a href="module-makeAnnouncesDb.html">makeAnnouncesDb</a></li><li><a href="module-makeAuthUser.html">makeAuthUser</a></li><li><a href="module-makeFilterAnnounces.html">makeFilterAnnounces</a></li><li><a href="module-makeFindAnnounce.html">makeFindAnnounce</a></li><li><a href="module-makeFindUser.html">makeFindUser</a></li><li><a href="module-makeGetAnnounce.html">makeGetAnnounce</a></li><li><a href="module-makeGetAnnounces.html">makeGetAnnounces</a></li><li><a href="module-makeGetUser.html">makeGetUser</a></li><li><a href="module-makeListAnnounces.html">makeListAnnounces</a></li><li><a href="module-makeLoginUser.html">makeLoginUser</a></li><li><a href="module-makePostAnnounce.html">makePostAnnounce</a></li><li><a href="module-makePostReset.html">makePostReset</a></li><li><a href="module-makePostUser.html">makePostUser</a></li><li><a href="module-makePutAnnounce.html">makePutAnnounce</a></li><li><a href="module-makePutPassword.html">makePutPassword</a></li><li><a href="module-makePutUser.html">makePutUser</a></li><li><a href="module-makeSearchAnnounces.html">makeSearchAnnounces</a></li><li><a href="module-makeUpdateannounce.html">makeUpdateannounce</a></li><li><a href="module-makeUpdatePassword.html">makeUpdatePassword</a></li><li><a href="module-makeUpdateUser.html">makeUpdateUser</a></li><li><a href="module-makeUsersDb.html">makeUsersDb</a></li><li><a href="module-userController.html">userController</a></li><li><a href="module-userDataAccess.html">userDataAccess</a></li><li><a href="module-userService.html">userService</a></li><li><a href="module-userUseCase.html">userUseCase</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.5</a> on Thu Dec 10 2020 20:36:16 GMT+0100 (Central European Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
