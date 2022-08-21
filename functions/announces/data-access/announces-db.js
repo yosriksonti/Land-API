@@ -27,20 +27,29 @@ module.exports =  function makeAnnouncesDb ({ makeDb, makeAuth, firebase, jwt, c
       const docID=String(result.id)
       console.log(docID)
       return auth.verifyIdToken(result.token).then((resp) => {
-        if("moderator" == resp.role) {
-          return db.collection('announces').doc(docID)
-                .delete()
-                .then((respond) => { 
-                  return respond
-                }).catch((error) => {
-                  throw (new Error(error))
-                })
-        } else {
-            throw (new Error("Permission Denied: not a moderator."))
-        }
+        return findById({
+          Id : docID
+        }).then(function(data) {
+          console.log("@@DATA",data)
+          if(data.body.userId === resp.id) {
+            return db.collection('announces').doc(docID)
+            .delete()
+            .then((respond) => { 
+              return respond
+            }).catch((error) => {
+              throw (new Error(error))
+            })
+          } else {
+            throw new Error("User Unauthorized.")
+          }
+        }).catch(function(error) {
+          throw (new Error(error))
+        })
       }).catch(function(error) {
           throw (new Error(error))
       })
+    }).catch(function(error) {
+      throw (new Error(error))
     })
   }
   async function findAll () {
@@ -113,20 +122,19 @@ module.exports =  function makeAnnouncesDb ({ makeDb, makeAuth, firebase, jwt, c
   
   async function findById ({ Id: _id }) {
     const db = makeDb()
-    const data = [];
+    let data = {}
     const docID=String(_id);
     console.log(_id);
     const result = await db.collection('announces').doc(docID).get().then(function(doc) {
       if (doc.exists) {
         console.log(doc.id, " => ", doc.data());
-        data.push({
+        data = {
         id: doc.id,
         body: doc.data()
-        });
+        }
       } else {
           throw (new Error("Announce does NOT exist."))
       }
-      
     })
     .catch(function(error) {
       throw (new Error(error))
@@ -169,39 +177,53 @@ module.exports =  function makeAnnouncesDb ({ makeDb, makeAuth, firebase, jwt, c
     return getAnnounce(announceInfo).then((result) => {
       return auth.verifyIdToken(result.token).then((resp) => {
         const docID=String(result.id)
-        const ref = db.collection('announces').doc(docID)
-        return db.runTransaction(async (t) => {
-          const doc = await t.get(ref);
-          const files = result.body.files
-          t.update(ref, {
-            files: files,
-            titre: result.body.titre,
-            description: result.body.description,
-            address: result.body.address,
-            size: result.body.size,
-            image: result.body.image,
-            date_update :result.body.date_update,
-            userId: result.body.userId,
-            points : result.body.points
-          });
-          return {
-            id: result.id, 
-            body: {
-              files: files,
-              titre: result.body.titre,
-              description: result.body.description,
-              image: result.body.image,
-              date_update :result.body.date_update
-            }
+        return findById({
+          Id : docID
+        }).then(function(data) {
+          if(data.body.userId === resp.id) {
+            const ref = db.collection('announces').doc(docID)
+            return db.runTransaction(async (t) => {
+              const doc = await t.get(ref);
+              const files = result.body.files
+              t.update(ref, {
+                files: files,
+                titre: result.body.titre,
+                description: result.body.description,
+                address: result.body.address,
+                size: result.body.size,
+                image: result.body.image,
+                date_update :result.body.date_update,
+                points : result.body.points
+              });
+              return {
+                id: result.id, 
+                body: {
+                  files: files,
+                  titre: result.body.titre,
+                  description: result.body.description,
+                  address: result.body.address,
+                  size: result.body.size,
+                  image: result.body.image,
+                  date_update :result.body.date_update,
+                  points : result.body.points
+                }
+              }
+            }).then((resp) => {
+              return resp
+            }).catch(error => {
+              throw new Error(error)
+            })
+          } else {
+            throw new Error("User Unauthorized.")
           }
-        }).then((resp) => {
-          return resp
-        }).catch(error => {
-          throw new Error(error)
-        })
+        }).catch(function(error) {
+          throw (new Error(error))
+      })
       }).catch(function(error) {
           throw (new Error(error))
       })
+    }).catch(function(error) {
+      throw (new Error(error))
     })
   }
   async function updateVisibility ({ ...announceInfo}) {
@@ -221,6 +243,8 @@ module.exports =  function makeAnnouncesDb ({ makeDb, makeAuth, firebase, jwt, c
       }).catch(function(error) {
           throw (new Error(error))
       })
+    }).catch(function(error) {
+      throw (new Error(error))
     })
   }
 }

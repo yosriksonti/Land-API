@@ -20,13 +20,11 @@ module.exports =  function makeUpdateAnnounce ({ announcesDb }) {
       description: announce.getDescription(),
       address: announce.getAddress(),
       size: announce.getSize(),
-      rubriqueId : announce.getRubriqueId(),
       image: announce.getImage(),
       date_update : announce.getDate_update(),
       token: announce.getToken(),
       files: announce.getFiles(),
       points: announce.getPoints()
-
     })
   }
 }
